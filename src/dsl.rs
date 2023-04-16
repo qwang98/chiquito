@@ -14,39 +14,39 @@ pub struct CircuitContext<F, TraceArgs, StepArgs> {
 
 impl<F, TraceArgs, StepArgs> CircuitContext<F, TraceArgs, StepArgs> {
     pub fn forward(&mut self, name: &str) -> Queriable<F> {
-        Queriable::Forward(self.sc.add_forward(name, 0), false)
+        Queriable::Forward(self.sc.add_forward(name, 0), false) // initialize to false so that rotation is zero; add ForwardSignal to the Circuit under CircuitContext 
     }
 
     pub fn forward_with_phase(&mut self, name: &str, phase: usize) -> Queriable<F> {
-        Queriable::Forward(self.sc.add_forward(name, phase), false)
+        Queriable::Forward(self.sc.add_forward(name, phase), false) 
     }
 
     pub fn import_halo2_advice(&mut self, name: &str, column: Halo2Column<Advice>) -> Queriable<F> {
-        Queriable::Halo2AdviceQuery(self.sc.add_halo2_advice(name, column), 0)
+        Queriable::Halo2AdviceQuery(self.sc.add_halo2_advice(name, column), 0) 
     }
 
     pub fn import_halo2_fixed(&mut self, name: &str, column: Halo2Column<Fixed>) -> Queriable<F> {
         Queriable::Halo2FixedQuery(self.sc.add_halo2_fixed(name, column), 0)
     }
 
-    pub fn step_type(&mut self, name: &str) -> StepTypeHandler {
+    pub fn step_type(&mut self, name: &str) -> StepTypeHandler { // add a new StepType using a StepTypeHandler that defines the name string, no StepType definition yet
         let handler = StepTypeHandler::new(name.to_string());
 
-        self.sc.add_step_type(handler, name);
+        self.sc.add_step_type(handler, name); // save the Handler to the Circuit, but only in the annotaiton field (see add_step_type function)
 
         handler
     }
 
-    pub fn step_type_def<D>(&mut self, handler: StepTypeHandler, def: D)
+    pub fn step_type_def<D>(&mut self, handler: StepTypeHandler, def: D) // StepType definition
     where
         D: FnOnce(&mut StepTypeContext<F, StepArgs>),
     {
         let mut context =
             StepTypeContext::<F, StepArgs>::new(handler.uuid(), handler.annotation.to_string());
 
-        def(&mut context);
+        def(&mut context); // call the def function to manipulate the StepTypeContext, which contains StepType
 
-        self.sc.add_step_type_def(context.step_type);
+        self.sc.add_step_type_def(context.step_type); // save the StepType to the circuit
     }
 
     pub fn trace<D>(&mut self, def: D)
@@ -72,7 +72,7 @@ impl<F, TraceArgs, StepArgs> CircuitContext<F, TraceArgs, StepArgs> {
     }
 }
 
-pub struct StepTypeContext<F, Args> {
+pub struct StepTypeContext<F, Args> { // ??? why wrap StepType in a StepTypeContext
     step_type: StepType<F, Args>,
 }
 

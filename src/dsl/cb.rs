@@ -12,37 +12,38 @@ pub struct Constraint<F> {
     pub expr: Expr<F>,
 }
 
-impl<F: Debug> From<Expr<F>> for Constraint<F> {
+impl<F: Debug> From<Expr<F>> for Constraint<F> { // converts Expr<F> to Constraint<F>
     fn from(expr: Expr<F>) -> Self {
-        let annotation = format!("{:?}", &expr);
+        let annotation = format!("{:?}", &expr); // Expr<F> has a Debug trait implementation which has the fmt function that defines formatter for the Expr<F> type
+        // {:?} indicates the format! macro uses the formatter implemented in the Debug trait
         Self { expr, annotation }
     }
 }
 
-impl<F> From<Queriable<F>> for Constraint<F> {
+impl<F> From<Queriable<F>> for Constraint<F> { // converts Queriable<F> to Constraint<F>
     fn from(query: Queriable<F>) -> Self {
         annotate(query.annotation(), Expr::Query(query))
     }
 }
 
-impl<F: Field + From<u64> + Debug> From<i32> for Constraint<F> {
-    fn from(v: i32) -> Self {
-        v.expr().into()
+impl<F: Field + From<u64> + Debug> From<i32> for Constraint<F> { 
+    fn from(v: i32) -> Self { // converts i32 into Constraint<F>
+        v.expr().into()  // expr converts v:i32 to Expr<F>; into converts Expr<F> to Constraint, because From<Constraint<F>> is implemented by Expr type
     }
 }
 
 macro_rules! impl_cb_like {
     ($type:ty) => {
-        impl<F: From<u64> + Debug> From<$type> for Constraint<F> {
+        impl<F: From<u64> + Debug> From<$type> for Constraint<F> { 
             #[inline]
-            fn from(value: $type) -> Self {
-                Expr::Const(F::from(value as u64)).into()
+            fn from(value: $type) -> Self { // convert from $type to Constraint<F>
+                Expr::Const(F::from(value as u64)).into() // wrap type to u64 first, then to F using the from function, and to Expr, and finally to Constraint
             }
         }
     };
 }
-
-impl_cb_like!(bool);
+// convert the following types to Constraint<F> by implementing the From<$type> traits
+impl_cb_like!(bool); 
 impl_cb_like!(u8);
 impl_cb_like!(u32);
 impl_cb_like!(u64);
@@ -54,17 +55,17 @@ impl<F> Debug for Constraint<F> {
     }
 }
 
-pub fn and<F: From<u64>, E: Into<Constraint<F>>, I: IntoIterator<Item = E>>(
+pub fn and<F: From<u64>, E: Into<Constraint<F>>, I: IntoIterator<Item = E>>( // ???: why use an into Iterator instead of Iterator<Item>
     inputs: I,
 ) -> Constraint<F> {
     let mut annotations: Vec<String> = vec![];
     let mut expr: Expr<F> = 1u64.expr();
 
-    for constraint in inputs.into_iter() {
-        let constraint = constraint.into();
-        annotations.push(constraint.annotation);
+    for constraint in inputs.into_iter() { // into_iter function converts the IntoIterator<Item> into an Iterator<Item>
+        let constraint = constraint.into(); // each item is generic type E that impl Into<Constraint<F>> trait
+        annotations.push(constraint.annotation); // push each annotation of the constraints into an annotation vector
 
-        expr = expr * constraint.expr;
+        expr = expr * constraint.expr; // ??? is my understanding correct: multiply all the expressions (A, B, ...) and constraint them to zero is equivalent to A and B and ...
     }
 
     Constraint {
@@ -86,10 +87,10 @@ pub fn or<
     for constraint in inputs.into_iter() {
         let constraint = constraint.into();
         annotations.push(constraint.annotation);
-        exprs.push(constraint.expr);
+        exprs.push(constraint.expr); // a vector of expression instead of chaining them using the multiplication operator as in the and function above
     }
 
-    let result = not(and(exprs.into_iter().map(not)));
+    let result = not(and(exprs.into_iter().map(not))); // basically chaining all the expressions in the stack by or, because not(and(not A, not B, not ...)) is equivalent to A or B or ...
 
     Constraint {
         annotation: format!("({})", annotations.join(" OR ")),
@@ -104,10 +105,10 @@ pub fn xor<F: From<u64> + Clone, LHS: Into<Expr<F>>, RHS: Into<Expr<F>>>(
     let lhs = lhs.into();
     let rhs = rhs.into();
 
-    lhs.clone() + rhs.clone() - 2u64.expr() * lhs * rhs
+    lhs.clone() + rhs.clone() - 2u64.expr() * lhs * rhs // ??? equivalent to a(1-b) + b(1-a), not sure why this is xor? !!! should it be lhs + rhs - 2 * lhs * rhs - 1 instead?
 }
 
-pub fn eq<F, LHS: Into<Constraint<F>>, RHS: Into<Constraint<F>>>(
+pub fn eq<F, LHS: Into<Constraint<F>>, RHS: Into<Constraint<F>>>( // lhs - rhs = 0
     lhs: LHS,
     rhs: RHS,
 ) -> Constraint<F> {
@@ -120,7 +121,7 @@ pub fn eq<F, LHS: Into<Constraint<F>>, RHS: Into<Constraint<F>>>(
     }
 }
 
-pub fn select<
+pub fn select< // selector * when_true + (1 - selector) * when_false == 0
     F: From<u64> + Clone,
     T1: Into<Constraint<F>>,
     T2: Into<Constraint<F>>,
@@ -145,7 +146,7 @@ pub fn select<
 }
 
 // not, works only if the parameter is 0 or 1
-pub fn not<F: From<u64>, T: Into<Constraint<F>>>(constraint: T) -> Constraint<F> {
+pub fn not<F: From<u64>, T: Into<Constraint<F>>>(constraint: T) -> Constraint<F> { // !!!: should constrain T to 0 or 1
     let constraint = constraint.into();
     let annotation = format!("NOT({})", constraint.annotation);
     let expr = 1u64.expr() - constraint.expr;
@@ -154,8 +155,8 @@ pub fn not<F: From<u64>, T: Into<Constraint<F>>>(constraint: T) -> Constraint<F>
 }
 
 /// Is zero
-pub fn isz<F, T: Into<Constraint<F>>>(constraint: T) -> Constraint<F> {
-    let constraint = constraint.into();
+pub fn isz<F, T: Into<Constraint<F>>>(constraint: T) -> Constraint<F> { // ??? why do this when there's a gadget already?
+    let constraint = constraint.into(); // basically the expression itself is constrained to zero
 
     Constraint {
         annotation: format!("0 == {}", constraint.annotation),
@@ -163,7 +164,7 @@ pub fn isz<F, T: Into<Constraint<F>>>(constraint: T) -> Constraint<F> {
     }
 }
 
-pub fn if_next_step<F: Clone, T: Into<Constraint<F>>>(
+pub fn if_next_step<F: Clone, T: Into<Constraint<F>>>( // ??? what's this function used for?
     step_type: StepTypeHandler,
     constraint: T,
 ) -> Constraint<F> {
@@ -180,22 +181,22 @@ pub fn if_next_step<F: Clone, T: Into<Constraint<F>>>(
     }
 }
 
-pub fn annotate<F, E: Into<Expr<F>>>(annotation: String, expr: E) -> Constraint<F> {
+pub fn annotate<F, E: Into<Expr<F>>>(annotation: String, expr: E) -> Constraint<F> { // builds an annotated Constraint using a annotation string and an Into<Expr<F>>
     Constraint {
         annotation,
         expr: expr.into(),
     }
 }
 
-pub fn rlc<F: From<u64>, E: Into<Expr<F>> + Clone, R: Into<Expr<F>> + Clone>(
-    exprs: &[E],
+pub fn rlc<F: From<u64>, E: Into<Expr<F>> + Clone, R: Into<Expr<F>> + Clone>( // returns a random linear combination using a slice of expressions and a randomness
+    exprs: &[E], // slice of type E provides read only access to the vector rather than creating a clone or taking ownership of vector using Vec<E>
     randomness: R,
 ) -> Expr<F> {
     if !exprs.is_empty() {
-        let mut exprs = exprs.iter().rev().map(|e| e.clone().into());
+        let mut exprs = exprs.iter().rev().map(|e| e.clone().into()); 
         let init = exprs.next().expect("should not be empty");
 
-        exprs.fold(init, |acc, expr| acc * randomness.clone().into() + expr)
+        exprs.fold(init, |acc, expr| acc * randomness.clone().into() + expr) // ??? looks like (((expr * rand + expr) * rand + expr) * rand + expr) ... rather than an RLC
     } else {
         0u64.expr()
     }
