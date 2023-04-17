@@ -9,12 +9,12 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct Circuit<F, TraceArgs, StepArgs> {
+pub struct Circuit<F, TraceArgs, StepArgs> { // a different circuit type from ast
     pub placement: Placement<F, StepArgs>,
     pub selector: StepSelector<F, StepArgs>,
-    pub columns: Vec<Column>,
-    pub polys: Vec<Poly<F>>,
-    pub lookups: Vec<PolyLookup<F>>,
+    pub columns: Vec<Column>, // new column type defined in this file
+    pub polys: Vec<Poly<F>>, // new type in this file
+    pub lookups: Vec<PolyLookup<F>>, // new type in this file
     pub step_types: HashMap<u32, Rc<StepType<F, StepArgs>>>,
 
     pub q_enable: Column,
@@ -63,12 +63,12 @@ impl Column {
             annotation: annotation.into(),
             id: uuid(),
             ctype: ColumnType::Advice,
-            phase,
+            phase, // ??? what does phase mean
             halo2_advice: None,
             halo2_fixed: None,
         }
     }
-
+// below are functions for constructing different Column enum types
     pub fn fixed(annotation: &str) -> Column {
         Column {
             annotation: annotation.to_string(),
@@ -134,7 +134,7 @@ impl<F: Debug> Debug for Poly<F> {
 }
 
 #[derive(Clone)]
-pub enum PolyExpr<F> {
+pub enum PolyExpr<F> { // the same enum types as Expr
     Const(F),
     Query(Column, i32, String), // column, rotation, annotation
     Sum(Vec<PolyExpr<F>>),
@@ -174,10 +174,10 @@ impl<F: Clone> PolyExpr<F> {
                 orig_rot + rot,
                 format!("rot[{}, {}]", rot, annotation),
             ),
-            PolyExpr::Sum(v) => PolyExpr::Sum(v.iter().map(|e| e.rotate(rot)).collect()),
-            PolyExpr::Mul(v) => PolyExpr::Mul(v.iter().map(|e| e.rotate(rot)).collect()),
+            PolyExpr::Sum(v) => PolyExpr::Sum(v.iter().map(|e| e.rotate(rot)).collect()), // rotate each vector element
+            PolyExpr::Mul(v) => PolyExpr::Mul(v.iter().map(|e| e.rotate(rot)).collect()), // rotate each vector element
             PolyExpr::Neg(v) => PolyExpr::Neg(Box::new(v.rotate(rot))),
-            PolyExpr::Pow(v, exp) => PolyExpr::Pow(Box::new(v.rotate(rot)), *exp),
+            PolyExpr::Pow(v, exp) => PolyExpr::Pow(Box::new(v.rotate(rot)), *exp), // rotate the base and keep the same exponent
             PolyExpr::Halo2Expr(_) => panic!("jarrl: cannot rotate polyexpr that contains halo2"),
         }
     }
@@ -187,3 +187,5 @@ impl<F: Clone> PolyExpr<F> {
 pub struct PolyLookup<F> {
     pub exprs: Vec<(PolyExpr<F>, PolyExpr<F>)>,
 }
+
+// ??? why do we need the new Poly types, given that the column types are the same as Expr defined in ast/expr?
