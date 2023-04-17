@@ -45,22 +45,23 @@ impl<F, TraceArgs, StepArgs> CircuitContext<F, TraceArgs, StepArgs> {
             StepTypeContext::<F, StepArgs>::new(handler.uuid(), handler.annotation.to_string());
 
         def(&mut context); // call the def function to manipulate the StepTypeContext, which contains StepType
+        // the def function typically add constraints to a StepType and define witness generation
 
         self.sc.add_step_type_def(context.step_type); // save the StepType to the circuit
     }
 
-    pub fn trace<D>(&mut self, def: D)
+    pub fn trace<D>(&mut self, def: D) 
     where
-        D: Fn(&mut dyn TraceContext<StepArgs>, TraceArgs) + 'static,
+        D: Fn(&mut dyn TraceContext<StepArgs>, TraceArgs) + 'static, // TraceContext trait has an "add" function that adds step instantiation defined in the compiler
     {
-        self.sc.set_trace(def);
+        self.sc.set_trace(def); // ast function invoked
     }
 
     pub fn fixed_gen<D>(&mut self, def: D)
     where
-        D: Fn(&mut dyn FixedGenContext<F>) + 'static,
+        D: Fn(&mut dyn FixedGenContext<F>) + 'static, // FixedGenContext has an "assign" function defined in the compiler
     {
-        self.sc.set_fixed_gen(def);
+        self.sc.set_fixed_gen(def); // ast function invoked
     }
 
     pub fn pragma_first_step(&mut self, step_type: StepTypeHandler) {
@@ -76,14 +77,14 @@ pub struct StepTypeContext<F, Args> { // ??? why wrap StepType in a StepTypeCont
     step_type: StepType<F, Args>,
 }
 
-impl<F, Args> StepTypeContext<F, Args> {
-    pub fn new(uuid: u32, name: String) -> Self {
+impl<F, Args> StepTypeContext<F, Args> { // invoke ast functions to add constraints to a StepType
+    pub fn new(uuid: u32, name: String) -> Self { 
         Self {
             step_type: StepType::new(uuid, name),
         }
     }
 
-    pub fn internal(&mut self, name: &str) -> Queriable<F> {
+    pub fn internal(&mut self, name: &str) -> Queriable<F> { 
         Queriable::Internal(self.step_type.add_signal(name))
     }
 
@@ -108,9 +109,10 @@ impl<F, Args> StepTypeContext<F, Args> {
 
     pub fn wg<D>(&mut self, def: D)
     where
-        D: Fn(&mut dyn WitnessGenContext<F>, Args) + 'static,
+        D: Fn(&mut dyn WitnessGenContext<F>, Args) + 'static, // WitnessGenContext has one assign function that takes a Queriable on LHS and an F:Field on RHS
+        // the WitnessGenContext trait is implemented by the halo2 backend
     {
-        self.step_type.set_wg(def);
+        self.step_type.set_wg(def); // ast function that assigns def function to the wg field of a StepType type
     }
 }
 
@@ -120,7 +122,7 @@ pub struct StepTypeHandler {
     pub annotation: &'static str,
 }
 
-impl StepTypeHandler {
+impl StepTypeHandler { // StepTypeHandler just stores the annotation; while StepTypeContext wraps the StepType and has constraints and wg stored under it
     fn new(annotation: String) -> Self {
         Self {
             id: uuid(),
@@ -133,7 +135,7 @@ impl StepTypeHandler {
     }
 
     pub fn next<F>(&self) -> Queriable<F> {
-        Queriable::StepTypeNext(*self)
+        Queriable::StepTypeNext(*self) // ??? what's StepTypeNext used for?
     }
 }
 
@@ -141,18 +143,18 @@ pub struct ForwardSignalHandler {
     // fs: ForwardSignal,
 }
 
-pub fn circuit<F, TraceArgs, StepArgs, D>(_name: &str, def: D) -> Circuit<F, TraceArgs, StepArgs>
+pub fn circuit<F, TraceArgs, StepArgs, D>(_name: &str, def: D) -> Circuit<F, TraceArgs, StepArgs> // this is the main circuit function we invoke and put everything in
 where
-    D: Fn(&mut CircuitContext<F, TraceArgs, StepArgs>),
+    D: Fn(&mut CircuitContext<F, TraceArgs, StepArgs>), // CircuitContext stores a single Circuit instance
 {
     // TODO annotate circuit
     let mut context = CircuitContext {
         sc: Circuit::default(),
     };
 
-    def(&mut context);
+    def(&mut context); // def is the main circuit building function, inside which we define step types
 
-    context.sc
+    context.sc // returns the Circuit
 }
 
 pub mod cb;
