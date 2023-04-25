@@ -30,11 +30,11 @@ impl<F, Args> Default for StepSelector<F, Args> {
 
 impl<F: Clone, Args> StepSelector<F, Args> {
     pub fn select(&self, step: &StepType<F, Args>, constraint: &PolyExpr<F>) -> PolyExpr<F> {
-        let selector = self.selector_expr.get(step).expect("step not found");
-        PolyExpr::Mul(vec![selector.clone(), constraint.clone()])
+        let selector = self.selector_expr.get(step).expect("step not found"); // selector is associated with each StepType
+        PolyExpr::Mul(vec![selector.clone(), constraint.clone()]) // multiply selector by constraint
     }
 
-    pub fn next_expr(&self, step: &StepType<F, Args>, step_height: u32) -> PolyExpr<F> {
+    pub fn next_expr(&self, step: &StepType<F, Args>, step_height: u32) -> PolyExpr<F> { // rotate a steptype
         let selector = self.selector_expr.get(step).expect("step not found");
 
         selector.rotate(step_height as i32)
@@ -58,14 +58,14 @@ pub struct SimpleStepSelectorBuilder {}
 impl StepSelectorBuilder for SimpleStepSelectorBuilder {
     fn build<F: Field, TraceArgs, StepArgs>(&self, unit: &mut CompilationUnit<F, StepArgs>) {
         let mut selector = StepSelector {
-            selector_expr: HashMap::new(),
+            selector_expr: HashMap::new(), // ??? why do we need three selector fields, especially the assignment? 
             selector_expr_not: HashMap::new(),
             selector_assignment: HashMap::new(),
             columns: Vec::new(),
         };
 
         for step in unit.step_types.values() {
-            let annotation = if let Some(annotation) = unit.annotations.get(&step.uuid()) {
+            let annotation = if let Some(annotation) = unit.annotations.get(&step.uuid()) { // if there's annotation already for a steptype, use it, or create a default annotation
                 format!("'step selector for {}'", annotation)
             } else {
                 "'step selector'".to_string()
@@ -80,7 +80,7 @@ impl StepSelectorBuilder for SimpleStepSelectorBuilder {
                 PolyExpr::Query(column.clone(), 0, annotation.clone()),
             );
 
-            selector.selector_expr_not.insert(
+            selector.selector_expr_not.insert( // 1 - expr to express the "not" concept
                 Rc::clone(step),
                 PolyExpr::Sum(vec![
                     PolyExpr::Const(F::one()),
@@ -92,9 +92,9 @@ impl StepSelectorBuilder for SimpleStepSelectorBuilder {
                 ]),
             );
 
-            selector.selector_assignment.insert(
+            selector.selector_assignment.insert( 
                 Rc::clone(step),
-                vec![(PolyExpr::Query(column, 0, annotation), F::one())],
+                vec![(PolyExpr::Query(column, 0, annotation), F::one())], // ??? why is F::one() needed here?
             );
         }
 

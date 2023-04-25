@@ -111,30 +111,30 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
         }
     }
 
-    pub fn compile<F: Field + Clone, TraceArgs, StepArgs>(
+    pub fn compile<F: Field + Clone, TraceArgs, StepArgs>( 
         &self,
         sc: &astCircuit<F, TraceArgs, StepArgs>,
-    ) -> Circuit<F, TraceArgs, StepArgs> {
+    ) -> Circuit<F, TraceArgs, StepArgs> { // creates an IR circuit
         let mut unit = CompilationUnit::<F, StepArgs> {
             annotations: {
-                let mut acc = sc.annotations.clone();
-                for step in sc.step_types.values() {
+                let mut acc = sc.annotations.clone(); // annotations from the circuit, i.e. not specific to a steptype, e.g. forward rows
+                for step in sc.step_types.values() { // iterate annotations from each steptype, e.g. internal steps
                     acc.extend(step.annotations.clone());
                 }
 
                 acc
             },
-            ..Default::default()
+            ..Default::default() // the rest value is set to default for now
         };
 
-        let halo2_advice_columns: Vec<Column> = sc
+        let halo2_advice_columns: Vec<Column> = sc // ast circuit
             .halo2_advice
             .iter()
             .map(|signal| {
-                if let Some(annotation) = unit.annotations.get(&signal.uuid()) {
+                if let Some(annotation) = unit.annotations.get(&signal.uuid()) { // if the advice column's annotation exists
                     Column::new_halo2_advice(format!("halo2 advice {}", annotation), *signal)
                 } else {
-                    Column::new_halo2_advice("halo2 advice", *signal)
+                    Column::new_halo2_advice("halo2 advice", *signal) // if no annotation exists, default annotation is "halo2 advice"
                 }
             })
             .collect();
@@ -151,18 +151,19 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
             })
             .collect();
 
-        unit.columns = vec![halo2_advice_columns, halo2_fixed_columns].concat();
+        unit.columns = vec![halo2_advice_columns, halo2_fixed_columns].concat(); // both advice and fixed columns go to columns under CompilationUnit
         unit.step_types = sc.step_types.clone();
 
-        self.cell_manager.place(&mut unit, sc);
+        self.cell_manager.place(&mut unit, sc); // fill the placement field of CompilationUnit; placement field holds three hashmaps, one for forward signals, one for all columns, and one for all steps
         self.step_selector_builder
-            .build::<F, TraceArgs, StepArgs>(&mut unit);
+            .build::<F, TraceArgs, StepArgs>(&mut unit); // fill the selector field of CompilationUnit and push all columns to the CompilationUnit's column field
 
         for step in unit.step_types.clone().values() {
-            self.compile_step(&mut unit, step);
+            // compile ast objects to ir, for columns that are probably limited to a step type, that's why compile_step function is needed
+            self.compile_step(&mut unit, step); // converts all columns and lookups from ast to ir (Poly) for each steptype
         }
 
-        let q_enable = Column {
+        let q_enable = Column { // create an enable column 
             annotation: "q_enable".to_owned(),
             ctype: ColumnType::Fixed,
             halo2_advice: None,
@@ -173,10 +174,10 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
 
         unit.columns.push(q_enable.clone());
 
-        self.add_q_enable(&mut unit, q_enable.clone());
+        self.add_q_enable(&mut unit, q_enable.clone()); // multiply all lookup and regular columns in the PLONK table
 
-        let q_first = if let Some(step_type) = sc.first_step {
-            let q_first = Column {
+        let q_first = if let Some(step_type) = sc.first_step { // if there's a first_step set by the pragma_first_step function in dsl
+            let q_first = Column { 
                 annotation: "q_first".to_owned(),
                 ctype: ColumnType::Fixed,
                 halo2_advice: None,
@@ -184,16 +185,16 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
                 phase: 0,
                 id: uuid(),
             };
-            unit.columns.push(q_first.clone());
+            unit.columns.push(q_first.clone()); // create a q_first column and push it to the CompilationUnit
 
-            let step = unit
+            let step = unit  // this is the first_step field of the ast circuit
                 .step_types
                 .get(&step_type.uuid())
                 .expect("step not found");
 
-            let poly = PolyExpr::Mul(vec![
+            let poly = PolyExpr::Mul(vec![ // multiply q_first to (1 - first_step) ??? why 
                 PolyExpr::<F>::Query(q_first.clone(), 0, "q_first".to_owned()),
-                unit.selector.unselect(step),
+                unit.selector.unselect(step), // unselect creates a (1 - step). here it is (1 - first_step)
             ]);
 
             unit.polys.push(Poly {
@@ -222,9 +223,9 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
                 .get(&step_type.uuid())
                 .expect("step not found");
 
-            let poly = PolyExpr::Mul(vec![
+            let poly = PolyExpr::Mul(vec![ // q_last * (1 - last_step)
                 PolyExpr::<F>::Query(q_last.clone(), 0, "q_last".to_owned()),
-                unit.selector.unselect(step),
+                unit.selector.unselect(step), // 1 - last_step
             ]);
 
             unit.polys.push(Poly {
@@ -237,14 +238,14 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
             None
         };
 
-        Circuit::<F, TraceArgs, StepArgs> {
+        Circuit::<F, TraceArgs, StepArgs> { // ir Circuit type constructed from CompilationUnit fields, which are constructed from ast Circuit
             placement: unit.placement,
             selector: unit.selector,
             columns: unit.columns,
             polys: unit.polys,
             lookups: unit.lookups,
             step_types: unit.step_types,
-            q_enable,
+            q_enable, // q_enable, q_first, and q_last are all fixed columns
             q_first,
             q_last,
 
@@ -261,12 +262,12 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
         let step_annotation = unit
             .annotations
             .get(&step.uuid())
-            .unwrap_or(&"??".to_string())
-            .to_owned();
+            .unwrap_or(&"??".to_string()) // default value of "??" is used incase the value is None
+            .to_owned(); // convert to owned String from &String
 
         for constr in step.constraints.iter() {
-            let constraint = self.transform_expr(unit, step, &constr.expr.clone());
-            let poly = unit.selector.select(step, &constraint);
+            let constraint = self.transform_expr(unit, step, &constr.expr.clone()); // transform to PolyExpr defined in IR
+            let poly = unit.selector.select(step, &constraint); // return the multiplication of selector (defined in steptype) and the constraint, as a PolyExpr
 
             unit.polys.push(Poly {
                 expr: poly,
@@ -282,7 +283,7 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
         // TODO only transition_constraints should have rotations
         for constr in step.transition_constraints.iter() {
             let constraint = self.transform_expr(unit, step, &constr.expr.clone());
-            let poly = unit.selector.select(step, &constraint);
+            let poly = unit.selector.select(step, &constraint); // multiply by selector for TransitionConstraints as well
 
             unit.polys.push(Poly {
                 expr: poly,
@@ -301,20 +302,20 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
                     .exprs
                     .iter()
                     .map(|(src, dest)| {
-                        let src_poly = self.transform_expr(unit, step, src);
-                        let dest_poly = self.transform_expr(unit, step, dest);
-                        let src_selected = unit.selector.select(step, &src_poly);
+                        let src_poly = self.transform_expr(unit, step, src); // source lookup column (this is already after multiplying the enabler)
+                        let dest_poly = self.transform_expr(unit, step, dest); // destination lookup column
+                        let src_selected = unit.selector.select(step, &src_poly); // multiply selector in steptype to source column
 
                         (src_selected, dest_poly)
                     })
                     .collect(),
             };
 
-            unit.lookups.push(poly_lookup);
+            unit.lookups.push(poly_lookup); // convert to PolyLookup
         }
     }
 
-    fn place_queriable<F: Clone, StepArgs>(
+    fn place_queriable<F: Clone, StepArgs>( // relied on by transform_expr; main purpose of PolyExpr is to convert the Querible type of ast
         &self,
         unit: &CompilationUnit<F, StepArgs>,
         step: &StepType<F, StepArgs>,
@@ -322,9 +323,9 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
     ) -> PolyExpr<F> {
         match q {
             Queriable::Internal(signal) => {
-                let placement = unit.placement.find_internal_signal_placement(step, &signal);
+                let placement = unit.placement.find_internal_signal_placement(step, &signal); // cell manager assigns column numbers for all forward and internal signals
 
-                let annotation = if let Some(annotation) = unit.annotations.get(&signal.uuid()) {
+                let annotation = if let Some(annotation) = unit.annotations.get(&signal.uuid()) { // use default annotation if not found
                     format!(
                         "{}[{}, {}]",
                         annotation, placement.column.annotation, placement.rotation
@@ -333,12 +334,12 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
                     format!("[{}, {}]", placement.column.annotation, placement.rotation)
                 };
 
-                PolyExpr::Query(placement.column, placement.rotation, annotation)
+                PolyExpr::Query(placement.column, placement.rotation, annotation) // column, rotation, annotation; 
             }
             Queriable::Forward(forward, next) => {
                 let placement = unit.placement.get_forward_placement(&forward);
 
-                let super_rotation = placement.rotation
+                let super_rotation = placement.rotation // ??? means super row rotation? 
                     + if next {
                         unit.placement.step_height(step) as i32
                     } else {
@@ -369,9 +370,9 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
                     .get(&step_type_handle.uuid())
                     .expect("step not found");
 
-                unit.selector.next_expr(dest_step, super_rotation)
+                unit.selector.next_expr(dest_step, super_rotation) // rotate a steptype to create a PolyExpr; next_expr does the rotation
             }
-            Queriable::Halo2AdviceQuery(signal, rot) => {
+            Queriable::Halo2AdviceQuery(signal, rot) => { 
                 let annotation = if let Some(annotation) = unit.annotations.get(&signal.uuid()) {
                     format!("[{}, {}]", annotation, rot)
                 } else {
@@ -401,14 +402,14 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
         }
     }
 
-    fn transform_expr<F: Clone, StepArgs>(
+    fn transform_expr<F: Clone, StepArgs>( // relied on by compile_steps function
         &self,
         unit: &CompilationUnit<F, StepArgs>,
         step: &StepType<F, StepArgs>,
         source: &Expr<F>,
     ) -> PolyExpr<F> {
         match source.clone() {
-            Expr::Const(c) => PolyExpr::Const(c),
+            Expr::Const(c) => PolyExpr::Const(c), // transform_expr is called by itself recursively
             Expr::Sum(v) => PolyExpr::Sum(
                 v.into_iter()
                     .map(|e| self.transform_expr(unit, step, &e))
@@ -422,7 +423,7 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
             Expr::Neg(v) => PolyExpr::Neg(Box::new(self.transform_expr(unit, step, &v))),
             Expr::Pow(v, exp) => PolyExpr::Pow(Box::new(self.transform_expr(unit, step, &v)), exp),
             Expr::Query(q) => self.place_queriable(unit, step, q),
-            Expr::Halo2Expr(expr) => PolyExpr::Halo2Expr(expr),
+            Expr::Halo2Expr(expr) => PolyExpr::Halo2Expr(expr), // Halo2Expr are directly concverted
         }
     }
 
@@ -437,7 +438,7 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
             .map(|poly| Poly {
                 annotation: poly.annotation.clone(),
                 expr: PolyExpr::Mul(vec![
-                    PolyExpr::<F>::Query(q_enable.clone(), 0, "q_enable".to_owned()),
+                    PolyExpr::<F>::Query(q_enable.clone(), 0, "q_enable".to_owned()), // multiply q_enable by all PolyExpr stored under CompilationUnit 
                     poly.expr.clone(),
                 ]),
             })
@@ -453,7 +454,7 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
                     .map(|(src, dest)| {
                         (
                             PolyExpr::Mul(vec![
-                                PolyExpr::<F>::Query(q_enable.clone(), 0, "q_enable".to_owned()),
+                                PolyExpr::<F>::Query(q_enable.clone(), 0, "q_enable".to_owned()), // multiply q_enable by all PolyLookup's source column stored under CompilationUnit. ??? don't we have an enable column for lookup already that multiplies to the source column?
                                 src.clone(),
                             ]),
                             dest.clone(),
