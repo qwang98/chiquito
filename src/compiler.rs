@@ -27,11 +27,15 @@ pub trait TraceContext<StepArgs> {
     fn set_height(&mut self, height: usize);
 }
 
+/// **`WitnessGenContext`** is a trait that represents a witness generation context. It provides an interface for assigning values to witness columns in a circuit.
 pub trait WitnessGenContext<F> {
+    /// The assign function takes a **`Queriable`** object representing the witness column (lhs) and the value (rhs) to be assigned.    
     fn assign(&mut self, lhs: Queriable<F>, rhs: F);
 }
 
+/// **`FixedGenContext`** is a trait that represents a fixed column generation context. It provides an interface for assigning values to fixed columns in a circuit at the specified offset.
 pub trait FixedGenContext<F> {
+    /// The assign function takes a **`Queriable`** object representing the fixed column (lhs) and the value (rhs) to be assigned.
     fn assign(&mut self, offset: usize, lhs: Queriable<F>, rhs: F);
 }
 
@@ -297,11 +301,12 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
 
         for lookup in step.lookups.iter() {
             let poly_lookup = PolyLookup {
+                annotation: lookup.annotation.clone(),
                 exprs: lookup
                     .exprs
                     .iter()
                     .map(|(src, dest)| {
-                        let src_poly = self.transform_expr(unit, step, src);
+                        let src_poly = self.transform_expr(unit, step, &src.expr);
                         let dest_poly = self.transform_expr(unit, step, dest);
                         let src_selected = unit.selector.select(step, &src_poly);
 
@@ -447,6 +452,7 @@ impl<CM: CellManager, SSB: StepSelectorBuilder> Compiler<CM, SSB> {
             .lookups
             .iter()
             .map(|lookup| PolyLookup {
+                annotation: lookup.annotation.clone(),
                 exprs: lookup
                     .exprs
                     .iter()
